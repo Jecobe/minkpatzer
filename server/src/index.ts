@@ -18,6 +18,7 @@ import challengesRoutes from './routes/challenges.js';
 import playersRoutes from './routes/players.js';
 import statsRoutes from './routes/stats.js';
 import reviewRoutes from './routes/review.js';
+import fairplayRoutes from './routes/fairplay.js';
 import ratingsRoutes from './routes/ratings.js';
 import insightsRoutes from './routes/insights.js';
 import insightsV2Routes from './routes/insightsV2.js';
@@ -117,6 +118,7 @@ app.route('/api/plan', planRoutes);
 app.route('/api/achievements', achievementsRoutes);
 app.route('/api/learn', learnRoutes);
 app.route('/api/voices', voicesRoutes);
+app.route('/api/fairplay', fairplayRoutes);
 
 // In production, serve the built web app
 import { existsSync, readFileSync } from 'node:fs';

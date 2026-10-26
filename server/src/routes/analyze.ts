@@ -245,6 +245,8 @@ export async function analyzePgnFull(
   pgn: string,
   depth: number,
   perf: PerformanceContext,
+  /** Called after each analysed ply (the engine check page shows a bar). */
+  onProgress?: (done: number, total: number) => void | Promise<void>,
 ): Promise<AnalysisResult> {
   const chess = new Chess();
   chess.loadPgn(pgn, { strict: false });
@@ -419,6 +421,7 @@ export async function analyzePgnFull(
     });
 
     prevEval = nextEval;
+    if (onProgress) await onProgress(i + 1, history.length);
     prevWhiteCp = nextWhiteCp;
   }
 

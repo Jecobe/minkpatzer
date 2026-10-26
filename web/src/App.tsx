@@ -23,6 +23,7 @@ import Learn from './pages/Learn';
 import Plan from './pages/Plan';
 import Lab from './pages/Lab';
 import Players from './pages/Players';
+import EngineCheck from './pages/EngineCheck';
 import PlayerProfile from './pages/PlayerProfile';
 import AdminUsers from './pages/admin/Users';
 import AdminSystem from './pages/admin/System';
@@ -192,6 +193,7 @@ export default function App() {
           <Route path="/plan" element={<Plan />} />
           <Route path="/lab" element={<Lab />} />
           <Route path="/players" element={<Players />} />
+          <Route path="/engine-check" element={<EngineCheck />} />
           <Route path="/players/:id" element={<PlayerProfile />} />
           <Route path="/settings" element={<SettingsPage />} />
           {user.role === 'admin' && <Route path="/admin/users" element={<AdminUsers />} />}
