@@ -44,6 +44,7 @@ export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) 
   useEffect(() => {
     setNavOpen(false);
     setAdminOpen(false);
+    setMoreOpen(false);
   }, [location.pathname]);
 
   async function logout() {
@@ -52,38 +53,44 @@ export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) 
     nav('/login');
   }
 
-  // Nine destinations plus an Admin menu don't fit on a laptop with labels
-  // showing. A breakpoint can't decide this: an admin carries two more items
-  // than a regular profile, and Bulgarian labels are noticeably wider than
-  // English ones, so any fixed width is wrong for somebody. Measure instead —
-  // if the pills would overflow, drop to icons with tooltips, which keeps
-  // every destination one click away rather than hiding some of them.
+  // Eleven destinations plus an Admin menu don't fit on a laptop. A
+  // breakpoint can't decide this: an admin carries an extra item, and
+  // Bulgarian labels are noticeably wider than English ones, so any fixed
+  // width is wrong for somebody. Measure instead, and give up space in steps
+  // that keep the words (icons alone were unreadable):
+  //   0 — icon + label
+  //   1 — label only, tighter padding
+  //   2 — label only, and the least-used pages move into a "More" menu
   const navRef = useRef<HTMLElement | null>(null);
-  const fullNavWidth = useRef(0);
-  const [compactNav, setCompactNav] = useState(false);
+  const neededWidth = useRef<number[]>([]);
+  const [navLevel, setNavLevel] = useState(0);
+  const [moreOpen, setMoreOpen] = useState(false);
   useEffect(() => {
     const nav = navRef.current;
     if (!nav) return;
     const check = () => {
       const available = nav.clientWidth;
       // dataset, not the closure: the observer can fire mid-update.
-      const isCompact = nav.dataset.compact === '1';
-      if (!isCompact) {
-        // Labels are showing, so this is the width they actually need.
-        fullNavWidth.current = nav.scrollWidth;
-        if (nav.scrollWidth > available + 1) setCompactNav(true);
-      } else if (fullNavWidth.current && available > fullNavWidth.current + 24) {
+      const level = Number(nav.dataset.level ?? 0);
+      neededWidth.current[level] = nav.scrollWidth;
+      if (nav.scrollWidth > available + 1 && level < 2) {
+        setNavLevel(level + 1);
+      } else if (level > 0) {
+        const wider = neededWidth.current[level - 1];
         // 24px of hysteresis so a window sitting exactly on the boundary
         // doesn't flip back and forth.
-        setCompactNav(false);
+        if (wider && available > wider + 24) setNavLevel(level - 1);
       }
     };
     check();
     const ro = new ResizeObserver(check);
     ro.observe(nav);
     return () => ro.disconnect();
-  }, [compactNav, user?.role, i18n.language]);
-  const navLabelClass = compactNav ? 'hidden' : 'inline';
+  }, [navLevel, user?.role, i18n.language]);
+  // Labels change width with the language (and admins get an extra item):
+  // start again from the full bar and step down as far as needed.
+  useEffect(() => { neededWidth.current = []; setNavLevel(0); }, [i18n.language, user?.role]);
+  const showNavIcons = navLevel === 0;
 
   function NavPill({ to, icon: Icon, label }: { to: string; icon: React.ElementType; label: string }) {
     return (
@@ -93,7 +100,8 @@ export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) 
         title={label}
         className={({ isActive }) =>
           cn(
-            'relative flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg px-2.5 py-2 text-sm font-medium transition-colors 2xl:px-3',
+            'relative flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg py-2 text-sm font-medium transition-colors',
+            showNavIcons ? 'px-2.5 2xl:px-3' : 'px-2',
             isActive
               ? 'text-white'
               : 'text-chesscom-300 hover:bg-chesscom-800 hover:text-white',
@@ -101,8 +109,8 @@ export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) 
           )
         }
       >
-        <Icon className="h-4 w-4 shrink-0" />
-        <span className={navLabelClass}>{label}</span>
+        {showNavIcons && <Icon className="h-4 w-4 shrink-0" />}
+        <span>{label}</span>
       </NavLink>
     );
   }
@@ -127,6 +135,14 @@ export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) 
     );
   }
 
+  // The pages that fold into "More" first when the bar is tight.
+  const moreItems = [
+    { to: '/openings', icon: BookMarked, label: t('openings.nav', { defaultValue: 'Openings' }) },
+    { to: '/plan', icon: ListChecks, label: t('plan.nav', { defaultValue: 'Plan' }) },
+    { to: '/lab', icon: Microscope, label: t('lab.nav', { defaultValue: 'Lab' }) },
+    { to: '/engine-check', icon: ShieldAlert, label: t('engineCheck.nav', { defaultValue: 'Engine check' }) },
+  ];
+
   return (
     <div className="flex min-h-screen flex-col bg-panel dark:bg-chesscom-950">
       <UpdateNotice />
@@ -139,21 +155,55 @@ export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) 
           </NavLink>
 
           {/* Desktop nav */}
-          <nav ref={navRef} data-compact={compactNav ? '1' : '0'} className="ml-4 hidden min-w-0 flex-1 items-center gap-0.5 md:flex">
+          <nav ref={navRef} data-level={navLevel} className="ml-4 hidden min-w-0 flex-1 items-center gap-0.5 md:flex">
             <NavPill to="/" icon={Home} label={t('app.home')} />
             <NavPill to="/play" icon={Swords} label={t('home.playTitle')} />
             <NavPill to="/review" icon={BookOpen} label={t('home.reviewTitle')} />
             <NavPill to="/insights" icon={BarChart3} label={t('insights.title', { defaultValue: 'Insights' })} />
             <NavPill to="/train" icon={Target} label={t('train.nav', { defaultValue: 'Train' })} />
             <NavPill to="/learn" icon={GraduationCap} label={t('learn.nav')} />
-            <NavPill to="/openings" icon={BookMarked} label={t('openings.nav', { defaultValue: 'Openings' })} />
-            <NavPill to="/plan" icon={ListChecks} label={t('plan.nav', { defaultValue: 'Plan' })} />
             <NavPill to="/players" icon={Users} label={t('players.nav', { defaultValue: 'Players' })} />
-            <NavPill to="/lab" icon={Microscope} label={t('lab.nav', { defaultValue: 'Lab' })} />
-            <NavPill to="/engine-check" icon={ShieldAlert} label={t('engineCheck.nav', { defaultValue: 'Engine check' })} />
+            {navLevel < 2 ? moreItems.map((m) => <NavPill key={m.to} {...m} />) : (
+              <div className="relative shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setMoreOpen((open) => !open)}
+                  aria-expanded={moreOpen}
+                  aria-haspopup="menu"
+                  className={cn(
+                    'relative flex items-center gap-1 whitespace-nowrap rounded-lg px-2 py-2 text-sm font-medium transition-colors',
+                    moreOpen || moreItems.some((m) => location.pathname.startsWith(m.to))
+                      ? 'bg-chesscom-800 text-white'
+                      : 'text-chesscom-300 hover:bg-chesscom-800 hover:text-white',
+                  )}
+                >
+                  <span>{t('common.more', { defaultValue: 'More' })}</span>
+                  <ChevronDown className="h-3.5 w-3.5" />
+                </button>
+                {moreOpen && (
+                  <div role="menu" className="absolute left-0 top-full z-40 mt-1 min-w-44 rounded-lg border border-chesscom-700 bg-chesscom-900 p-1 shadow-lg">
+                    {moreItems.map(({ to, icon: Icon, label }) => (
+                      <NavLink
+                        key={to}
+                        to={to}
+                        role="menuitem"
+                        onClick={() => setMoreOpen(false)}
+                        className={({ isActive }) => cn(
+                          'flex items-center gap-2 rounded-md px-3 py-2 text-sm',
+                          isActive ? 'bg-chesscom-800 text-white' : 'text-chesscom-200 hover:bg-chesscom-800 hover:text-white',
+                        )}
+                      >
+                        <Icon className="h-4 w-4" />
+                        <span>{label}</span>
+                      </NavLink>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             {user?.role === 'admin' && (
               <>
-                <span className="mx-2 h-5 w-px bg-chesscom-700" />
+                <span className={cn('h-5 w-px bg-chesscom-700', showNavIcons ? 'mx-2' : 'mx-1')} />
                 <div className="relative shrink-0">
                   <button
                     type="button"
@@ -162,14 +212,15 @@ export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) 
                     aria-expanded={adminOpen}
                     aria-haspopup="menu"
                     className={cn(
-                      'relative flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                      'relative flex items-center gap-2 whitespace-nowrap rounded-lg py-2 text-sm font-medium transition-colors',
+                      showNavIcons ? 'px-3' : 'px-2',
                       adminOpen
                         ? 'bg-chesscom-800 text-white'
                         : 'text-chesscom-300 hover:bg-chesscom-800 hover:text-white',
                     )}
                   >
-                    <Users className="h-4 w-4 shrink-0" />
-                    <span className={navLabelClass}>{t('common.admin', { defaultValue: 'Admin' })}</span>
+                    {showNavIcons && <Users className="h-4 w-4 shrink-0" />}
+                    <span>{t('common.admin', { defaultValue: 'Admin' })}</span>
                     <ChevronDown className="h-3.5 w-3.5" />
                   </button>
                   {adminOpen && (
