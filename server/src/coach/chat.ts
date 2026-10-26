@@ -85,7 +85,12 @@ async function focusFacts(args: GameChatArgs): Promise<Record<string, unknown> |
       userId: args.userId,
       ownMove: sideOf(m.ply) === args.userColor,
     }, args.language, args.audience);
-    base.coach_facts = coaching.facts;
+    if (sideOf(m.ply) === args.userColor) base.coach_facts = coaching.facts;
+    else {
+      // Written from the mover's side: here "the opponent" is the player.
+      const { opponent_reply, takeaway: _t, player_history: _h, ...rest } = coaching.facts;
+      base.coach_facts = { ...rest, your_best_answer: opponent_reply ?? null, note: 'This was the opponent\'s move. In "why", "the opponent" means you, the player.' };
+    }
   } catch (err) {
     console.warn('[coach-chat] coaching facts failed:', err instanceof Error ? err.message : err);
   }

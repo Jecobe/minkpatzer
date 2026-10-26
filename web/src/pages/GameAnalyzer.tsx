@@ -264,6 +264,8 @@ export default function GameAnalyzer() {
       // Your own moves get "you" and your history (past mistakes of the same
       // kind, weakest phase, the opening trainer); the opponent's get neither.
       user_perspective: !!data.game.user_color && (ply % 2 === 1 ? 'white' : 'black') === data.game.user_color,
+      // So the opponent's moves are explained to you as theirs, not yours.
+      viewer_color: data.game.user_color,
     },
   }) : null;
 

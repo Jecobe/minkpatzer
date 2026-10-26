@@ -25,6 +25,7 @@ export interface ExplainParams {
   pv_san?: string[];
   history?: string[];
   user_perspective?: boolean;
+  viewer_color?: "white" | "black" | null;
 }
 
 export interface CoachAnswer {
@@ -88,7 +89,9 @@ export async function coachExplain(
     return { text: second, actions: coaching.actions, source: "llm_retry" };
   }
   console.warn(`[coach] retry contradicted the verdict too; using the facts-only answer`);
-  return { text: fallbackText(coaching.facts, lang), actions: coaching.actions, source: "fallback" };
+  const opponentMove = !params.user_perspective && !!params.viewer_color;
+  const fallbackFacts = opponentMove ? { ...coaching.facts, takeaway: null } : coaching.facts;
+  return { text: fallbackText(fallbackFacts, lang), actions: coaching.actions, source: "fallback" };
 }
 
 /** A hint streams straight through: it names no move and passes no verdict,

@@ -25,6 +25,10 @@ interface ExplainMoveInput {
   pv_san?: string[];
   history?: string[];
   user_perspective?: boolean;
+  /** The colour of the player being coached, when known. With it, an
+   *  opponent's move is explained to that player: "you" stays the player,
+   *  never the side that moved. */
+  viewer_color?: "white" | "black" | null;
 }
 
 const SECOND_PERSON_PERSPECTIVE: Record<Language, string> = {
@@ -34,6 +38,14 @@ const SECOND_PERSON_PERSPECTIVE: Record<Language, string> = {
   de: "du",
   ru: "ты",
 };
+const OPPONENT_MOVED: Record<Language, (mover: string, you: string) => string> = {
+  en: (m, y) => `Your opponent (${m}) made this move. You play ${y}. Win chances, material and your_pieces are from your side.`,
+  bg: (m, y) => `Този ход е на противника ти (${m === "White" ? "Белите" : "Черните"}). Ти играеш с ${y === "White" ? "белите" : "черните"}. Шансовете, материалът и your_pieces са от твоя страна.`,
+  es: (m, y) => `Este movimiento lo hizo tu rival (${m === "White" ? "Blancas" : "Negras"}). Tú juegas con ${y === "White" ? "blancas" : "negras"}. Las probabilidades, el material y your_pieces son desde tu lado.`,
+  de: (m, y) => `Diesen Zug hat dein Gegner (${m === "White" ? "Weiß" : "Schwarz"}) gespielt. Du spielst ${y === "White" ? "Weiß" : "Schwarz"}. Gewinnchancen, Material und your_pieces sind aus deiner Sicht.`,
+  ru: (m, y) => `Этот ход сделал твой соперник (${m === "White" ? "белые" : "чёрные"}). Ты играешь ${y === "White" ? "белыми" : "чёрными"}. Шансы, материал и your_pieces — с твоей стороны.`,
+};
+
 /** FACTS payload for /api/coach/explain. */
 export function factsForExplain(
   input: ExplainMoveInput,
@@ -79,7 +91,10 @@ export function factsForExplain(
     /* leave 0 */
   }
 
-  const isWhite = input.player === "White";
+  // Whose side the numbers are told from: the mover's, unless this is the
+  // opponent's move in the player's own game — then the player's.
+  const opponentMove = !input.user_perspective && !!input.viewer_color;
+  const isWhite = opponentMove ? input.viewer_color === "white" : input.player === "White";
   const materialDiffPlayer = isWhite ? materialDiffWhite : -materialDiffWhite;
 
   // Win-probability anchoring. Without this, small models reach for trained
@@ -117,9 +132,12 @@ export function factsForExplain(
   return {
     lang: language,
     audience,
-    perspective: input.user_perspective
+    perspective: input.user_perspective || opponentMove
       ? (SECOND_PERSON_PERSPECTIVE[language] ?? SECOND_PERSON_PERSPECTIVE.en)
       : input.player,
+    ...(opponentMove ? {
+      who_moved: OPPONENT_MOVED[language](input.player, input.viewer_color === "white" ? "White" : "Black"),
+    } : {}),
     side_to_move_before: input.player.toLowerCase(),
     history_recent: recentMovesNatural(
       input.history ?? [],
@@ -159,6 +177,7 @@ const HINT_SENTENCES: Record<Audience, number> = { kid: 2, beginner: 3, intermed
 function explainTask(language: Language, audience: Audience, input: ExplainMoveInput, tone: string): string {
   const n = EXPLAIN_SENTENCES[audience];
   const own = input.user_perspective;
+  if (!own && input.viewer_color) return opponentMoveTask(language, n);
   if (language === "bg") {
     const persp = own ? "ти" : input.player === "White" ? "Бели" : "Черни";
     return `TASK: Коучвай играча за този ход, в този ред:
@@ -213,6 +232,50 @@ Lass einen Schritt aus, wenn sein Feld in FACTS leer ist. ${address} Höchstens 
 Skip any step whose FACTS field is empty. Address the player as "${persp}". At most ${n} sentences — this overrides the audience block. Use only FACTS. No chess notation. No JSON. Natural language only, in English.`;
 }
 
+// The opponent's move in the player's own game. The model is told outright
+// who moved, because every coaching prompt otherwise reads as "the player
+// moved" and it calls the opponent's move "your move".
+function opponentMoveTask(language: Language, n: number): string {
+  if (language === "bg") {
+    return `TASK: Този ход е на ПРОТИВНИКА на играча (виж FACTS.who_moved), не на играча. Обясни го на играча:
+1. Кажи, че противникът е изиграл ход от вида FACTS.verdict.
+2. Обясни ЗАЩО с FACTS.why — какво дава или позволява този ход.
+3. Ако има FACTS.your_best_answer, покажи как играчът може да отговори или да го накаже.
+4. Ако има FACTS.better_move, кажи накратко какво е трябвало да изиграе противникът.
+Пропусни стъпка, чието поле е празно. "Ти" е винаги играчът; за този, който е изиграл хода, казвай "противникът". Никога не казвай "ти изигра" за този ход. Във FACTS.why "противникът" означава самия играч. Най-много ${n} изречения. Само FACTS. Без шахматна нотация. Без JSON. Само естествен език на български.`;
+  }
+  if (language === "es") {
+    return `TASK: Este movimiento lo hizo el RIVAL del jugador (ver FACTS.who_moved), no el jugador. Explícaselo al jugador:
+1. Di que el rival hizo una jugada del tipo FACTS.verdict.
+2. Explica POR QUÉ con FACTS.why: qué consigue o qué permite esta jugada.
+3. Si hay FACTS.your_best_answer, muestra cómo puede responder o castigarla el jugador.
+4. Si hay FACTS.better_move, di brevemente qué debería haber jugado el rival.
+Omite un paso cuyo campo esté vacío. "Tú" es siempre el jugador; a quien hizo la jugada llámalo "tu rival". Nunca digas "jugaste" sobre esta jugada. En FACTS.why, "el rival" significa el propio jugador. Como máximo ${n} frases. Solo FACTS. Sin notación de ajedrez. Sin JSON. Solo lenguaje natural, en español.`;
+  }
+  if (language === "de") {
+    return `TASK: Diesen Zug hat der GEGNER des Spielers gespielt (siehe FACTS.who_moved), nicht der Spieler. Erkläre ihn dem Spieler:
+1. Sag, dass der Gegner einen Zug der Art FACTS.verdict gespielt hat.
+2. Erkläre WARUM mit FACTS.why: was dieser Zug erreicht oder zulässt.
+3. Wenn FACTS.your_best_answer gesetzt ist, zeig, wie der Spieler antworten oder ihn bestrafen kann.
+4. Wenn FACTS.better_move gesetzt ist, sag kurz, was der Gegner hätte spielen sollen.
+Lass einen Schritt aus, wenn sein Feld leer ist. "Du" ist immer der Spieler; wer den Zug gemacht hat, ist "dein Gegner". Sag nie "du hast gespielt" über diesen Zug. In FACTS.why meint "der Gegner" den Spieler selbst. Höchstens ${n} Sätze. Nur FACTS. Keine Schachnotation. Kein JSON. Nur natürliche Sprache, auf Deutsch.`;
+  }
+  if (language === "ru") {
+    return `TASK: Этот ход сделал СОПЕРНИК игрока (см. FACTS.who_moved), а не сам игрок. Объясни его игроку:
+1. Скажи, что соперник сделал ход вида FACTS.verdict.
+2. Объясни, ПОЧЕМУ, по FACTS.why — что этот ход даёт или допускает.
+3. Если есть FACTS.your_best_answer, покажи, как игрок может ответить или наказать его.
+4. Если есть FACTS.better_move, коротко скажи, что соперник должен был сыграть.
+Пропусти шаг, если его поле пустое. "Ты" — всегда игрок; того, кто сделал ход, называй "соперник". Никогда не говори игроку "ты сыграл" об этом ходе. В FACTS.why "соперник" означает самого игрока. Не больше ${n} предложений. Только FACTS. Без шахматной нотации. Без JSON. Только естественный язык, по-русски.`;
+  }
+  return `TASK: This move was made by the player's OPPONENT (see FACTS.who_moved), not by the player. Explain it to the player:
+1. Say that their opponent played a move of the kind in FACTS.verdict.
+2. Explain WHY, using FACTS.why: what this move does or allows.
+3. If FACTS.your_best_answer is set, show how the player can answer or punish it.
+4. If FACTS.better_move is set, say briefly what the opponent should have played instead.
+Skip any step whose field is empty. "You" is always the player; call whoever made this move "your opponent". Never say "you played" about this move. In FACTS.why, "the opponent" means the player themself. At most ${n} sentences. Use only FACTS. No chess notation. No JSON. Natural language only, in English.`;
+}
+
 /** Build the user-message body for /api/coach/explain. `coaching` is what
  *  coaching.ts worked out (why, alternatives, history); it goes first so a
  *  small model reads the verdict and the reasons before the inventory. */
@@ -223,7 +286,15 @@ export function explainMovePrompt(
   coaching: Record<string, unknown> = {},
   correction?: string,
 ): string {
-  const facts = { ...coaching, ...factsForExplain(input, language, audience), ...coaching };
+  let c = coaching;
+  if (!input.user_perspective && input.viewer_color) {
+    // Told to the player about their opponent's move: the "opponent's best
+    // answer" is the player's own best answer, and the takeaway (a rule for
+    // the mover) isn't theirs to learn.
+    const { opponent_reply, takeaway: _t, player_history: _h, ...rest } = coaching;
+    c = { ...rest, your_best_answer: opponent_reply ?? null };
+  }
+  const facts = { ...c, ...factsForExplain(input, language, audience), ...c };
   const factsJson = JSON.stringify(facts, null, 2);
   const tone = String(coaching.tone ?? "");
   const task = explainTask(language, audience, input, tone);

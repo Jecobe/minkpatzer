@@ -28,6 +28,7 @@ const explainSchema = z.object({
   pv_san: z.array(z.string()).optional(),
   history: z.array(z.string()).optional(),
   user_perspective: z.boolean().optional(),
+  viewer_color: z.enum(['white', 'black']).nullable().optional(),
   language: z.enum(['en', 'bg', 'es', 'de', 'ru']).optional(),
   audience: z.enum(['kid', 'beginner', 'intermediate', 'advanced']).optional(),
 });
