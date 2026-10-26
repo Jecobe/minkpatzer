@@ -38,9 +38,11 @@ interface Props {
   debounceMs?: number;
   /** Compact rendering for tight spaces. */
   compact?: boolean;
+  /** Called with each finished answer (and '' when a new one starts). */
+  onAnswer?: (text: string) => void;
 }
 
-export default function CoachPanel({ systemConfigured, request, autoPlay, triggerKey, debounceMs = 600, compact }: Props) {
+export default function CoachPanel({ systemConfigured, request, autoPlay, triggerKey, debounceMs = 600, compact, onAnswer }: Props) {
   const { t } = useTranslation();
   const { user } = useAuth();
   const [text, setText] = useState('');
@@ -77,6 +79,7 @@ export default function CoachPanel({ systemConfigured, request, autoPlay, trigge
     const ac = new AbortController(); abortRef.current = ac;
 
     setText(''); setBusy(true); setError(null); setActions([]);
+    onAnswer?.('');
     const { url, body } = request();
     setLastBody(body);
     let acc = '';
@@ -117,6 +120,7 @@ export default function CoachPanel({ systemConfigured, request, autoPlay, trigge
       if ((e as Error).name !== 'AbortError') setError((e as Error).message);
     } finally {
       setBusy(false);
+      if (!ac.signal.aborted) onAnswer?.(stripReasoning(acc).trim());
       if (autoPlay && acc.trim() && user?.profile.tts_enabled && !mutedRef.current) {
         playTts(acc);
       }

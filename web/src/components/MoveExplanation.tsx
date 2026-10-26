@@ -5,11 +5,13 @@
 // language: what the move does, what it allows, and what the better move
 // would have achieved.
 
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { Swords } from 'lucide-react';
 import { CLASS_STYLE, GLYPH_SVG } from '../lib/classification';
 import CoachPanel from './CoachPanel';
+import GameChat from './GameChat';
 import type { AnalyzedMove } from '../types';
 
 /** Lichess win-chance curve (same as the server's cpToWinPct), 0..100 for White. */
@@ -31,6 +33,8 @@ export function moverWinPct(move: Pick<AnalyzedMove, 'ply' | 'eval_before_cp' | 
 
 interface Props {
   move: AnalyzedMove;
+  /** The game, for follow-up questions to the coach about this move. */
+  gameId?: number;
   /** The player's colour, so the card can say "your move" / "opponent's move". */
   userColor: 'white' | 'black' | null;
   coachConfigured: boolean;
@@ -40,8 +44,10 @@ interface Props {
   playFrom?: string;
 }
 
-export default function MoveExplanation({ move, userColor, coachConfigured, coachRequest, playFrom }: Props) {
+export default function MoveExplanation({ move, gameId, userColor, coachConfigured, coachRequest, playFrom }: Props) {
   const { t } = useTranslation();
+  // The coach's explanation, so follow-up questions carry on from it.
+  const [explained, setExplained] = useState('');
   const s = CLASS_STYLE[move.classification];
   const side = move.ply % 2 === 1 ? 'white' : 'black';
   const who = userColor == null
@@ -99,7 +105,24 @@ export default function MoveExplanation({ move, userColor, coachConfigured, coac
           triggerKey={move.ply}
           debounceMs={700}
           compact
+          onAnswer={setExplained}
         />
+        {coachConfigured && gameId != null && (
+          <div className="mt-2">
+            <GameChat
+              gameId={gameId}
+              ply={move.ply}
+              seed={explained || undefined}
+              resetKey={move.ply}
+              inline
+              placeholder={t('chat.askAboutMove', { defaultValue: 'Ask a follow-up about this move…' })}
+              suggestions={[
+                t('chat.sugWhyBest', { defaultValue: 'Why is the engine move better?' }),
+                t('chat.sugWhatNext', { defaultValue: 'What should I have been thinking here?' }),
+              ]}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

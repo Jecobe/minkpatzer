@@ -37,3 +37,6 @@ docs/launch/
 
 # Test coverage
 coverage/
+
+# Neo piece images: chess.com artwork, not redistributed. Supply your own.
+web/public/pieces/neo/*.png

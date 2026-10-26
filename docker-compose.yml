@@ -3,12 +3,15 @@ services:
     # Pulls the published image from Docker Hub by default (rebuilt on every
     # push to main by .github/workflows/docker-publish.yml). To build from
     # local source instead, uncomment `build: .` and run `docker compose build`.
-    image: sikamikaniko123/patzer:latest
-    # build: .
+    # Built locally from this checkout (Neo piece set). To go back to the
+    # published image: image: sikamikaniko123/patzer:latest and drop build.
+    image: patzer-local:latest
+    build: .
     container_name: patzer
     restart: unless-stopped
-    ports:
-      - "${HOST_PORT:-8800}:8800"
+    # Host networking so the app can reach Ollama on 127.0.0.1:11434 (Ollama
+    # listens on loopback only). The app port is set by PORT below.
+    network_mode: host
     # Linux + Ollama on this same machine: uncomment these two lines to reach
     # it as http://host.docker.internal:11434 (Docker Desktop on Windows/Mac
     # has that name built in). Needs Docker 20.10+, and Ollama must listen on
@@ -19,6 +22,9 @@ services:
       - patzer-data:/app/data
     environment:
       - NODE_ENV=production
+      - PORT=${HOST_PORT:-8800}
+      - STOCKFISH_THREADS=${STOCKFISH_THREADS:-2}
+      - STOCKFISH_HASH=${STOCKFISH_HASH:-128}
       # Analysis engine backend. `local` (default) uses the bundled Stockfish
       # binary; set ENGINE_BACKEND=chessapi (e.g. via a .env file) to opt in to
       # the hosted chess-api.com engine — the knob for a public try-it instance
@@ -43,9 +49,9 @@ services:
       # Opt this container in to the (label-enabled) Watchtower on the host, so
       # a new `:latest` on Docker Hub is pulled and the container recreated
       # automatically. The named volume below keeps the SQLite DB across that.
-      - "com.centurylinklabs.watchtower.enable=true"
+      - "com.centurylinklabs.watchtower.enable=false"
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://localhost:8800/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "fetch('http://localhost:'+(process.env.PORT||8800)+'/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s
       timeout: 5s
       retries: 3

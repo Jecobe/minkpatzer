@@ -27,6 +27,15 @@ export function voicesForLang(lang: Language): SpeechSynthesisVoice[] {
 
 export interface SpeakOpts { voice?: string | null; rate?: number; pitch?: number; lang?: Language }
 
+/** What speak() hands back: set `onend` to hear when the speech finishes. */
+export interface SpeakHandle { onend: (() => void) | null }
+
+// A profile voice of `custom:<id>` is a cloned voice served by the local
+// voice engine (server/src/routes/voices.ts) rather than a browser voice.
+export const CUSTOM_PREFIX = 'custom:';
+export const customVoiceId = (voice: string | null | undefined): number | null =>
+  voice?.startsWith(CUSTOM_PREFIX) ? Number(voice.slice(CUSTOM_PREFIX.length)) || null : null;
+
 function pickVoice(opts: SpeakOpts): SpeechSynthesisVoice | undefined {
   const voices = getVoices();
   if (opts.voice) {
@@ -50,7 +59,9 @@ function pickVoice(opts: SpeakOpts): SpeechSynthesisVoice | undefined {
 // was simply ignored and it carried on reading the line out.
 let generation = 0;
 
-export function speak(text: string, opts: SpeakOpts = {}): SpeechSynthesisUtterance | null {
+export function speak(text: string, opts: SpeakOpts = {}): SpeakHandle | null {
+  const customId = customVoiceId(opts.voice);
+  if (customId !== null) return speakCustom(text, customId, opts);
   if (typeof speechSynthesis === 'undefined') return null;
   const clean = stripMarkdown(stripReasoning(text));
   if (!clean) return null;
@@ -67,8 +78,11 @@ export function speak(text: string, opts: SpeakOpts = {}): SpeechSynthesisUttera
   }
 
   speechSynthesis.cancel();
+  stopCustom();
 
   const u = new SpeechSynthesisUtterance(clean);
+  const handle: SpeakHandle = { onend: null };
+  u.onend = () => handle.onend?.();
   u.rate = opts.rate ?? 1;
   u.pitch = opts.pitch ?? 1;
 
@@ -92,10 +106,102 @@ export function speak(text: string, opts: SpeakOpts = {}): SpeechSynthesisUttera
     if (startedAt !== generation) return; // cancelled inside the deferral
     speechSynthesis.speak(u);
   }, 0);
-  return u;
+  return handle;
 }
 
 export function cancel() {
   generation++;
   if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel();
+  stopCustom();
+}
+
+// ---- Custom (cloned) voices ----
+
+let customAudio: HTMLAudioElement | null = null;
+let customAbort: AbortController | null = null;
+
+function stopCustom() {
+  customAbort?.abort();
+  customAbort = null;
+  if (customAudio) {
+    customAudio.pause();
+    URL.revokeObjectURL(customAudio.src);
+    customAudio = null;
+  }
+}
+
+/** Sentence-sized pieces: the engine is quickest on short text, and the first
+ *  sentence can play while the rest are still being generated. */
+export function chunkText(text: string, max = 280): string[] {
+  const sentences = text.replace(/\s+/g, ' ').match(/[^.!?…]+(?:[.!?…]+["')\]]*|$)/g) ?? [text];
+  const chunks: string[] = [];
+  let cur = '';
+  for (const raw of sentences) {
+    const s = raw.trim();
+    if (!s) continue;
+    if (cur && (cur.length + s.length + 1 > max || cur.length >= 60)) { chunks.push(cur); cur = ''; }
+    if (s.length > max) {
+      // A run-on sentence: split at commas, then hard-wrap as a last resort.
+      for (const part of s.match(new RegExp(`.{1,${max}}(?:[,;:]\\s|\\s|$)`, 'g')) ?? [s]) chunks.push(part.trim());
+      continue;
+    }
+    cur = cur ? `${cur} ${s}` : s;
+  }
+  if (cur) chunks.push(cur);
+  return chunks.filter(Boolean);
+}
+
+async function fetchCustom(id: number, text: string, signal: AbortSignal): Promise<Blob> {
+  const res = await fetch(`/api/voices/${id}/speak`, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'patzer' },
+    body: JSON.stringify({ text }),
+    signal,
+  });
+  if (!res.ok) throw new Error(`tts ${res.status}`);
+  return res.blob();
+}
+
+function speakCustom(text: string, id: number, opts: SpeakOpts): SpeakHandle | null {
+  const clean = stripMarkdown(stripReasoning(text));
+  if (!clean) return null;
+  if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel();
+  stopCustom();
+
+  const handle: SpeakHandle = { onend: null };
+  const myGen = ++generation;
+  const abort = new AbortController();
+  customAbort = abort;
+  const chunks = chunkText(clean);
+
+  void (async () => {
+    try {
+      // Generate one ahead: chunk i+1 is being made while chunk i plays.
+      let next = fetchCustom(id, chunks[0]!, abort.signal);
+      for (let i = 0; i < chunks.length; i++) {
+        const blob = await next;
+        if (i + 1 < chunks.length) next = fetchCustom(id, chunks[i + 1]!, abort.signal);
+        if (myGen !== generation) return;
+        const audio = new Audio(URL.createObjectURL(blob));
+        audio.playbackRate = opts.rate ?? 1;
+        audio.preservesPitch = true;
+        customAudio = audio;
+        await new Promise<void>((resolve, reject) => {
+          audio.onended = () => resolve();
+          audio.onerror = () => reject(new Error('playback failed'));
+          audio.play().catch(reject);
+        });
+        URL.revokeObjectURL(audio.src);
+        if (myGen !== generation) return;
+      }
+    } catch (err) {
+      if ((err as Error).name !== 'AbortError') console.warn('[tts] custom voice failed', err);
+    }
+    if (myGen === generation) {
+      customAudio = null;
+      handle.onend?.();
+    }
+  })();
+  return handle;
 }

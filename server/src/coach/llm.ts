@@ -166,6 +166,8 @@ export interface ChatMessage { role: 'system' | 'user' | 'assistant'; content: s
 
 interface ChatOpts {
   model?: string; temperature?: number; topP?: number; numPredict?: number;
+  /** Ollama context window. Its default (2–4k) silently truncates long prompts. */
+  numCtx?: number;
   signal?: AbortSignal; hardTimeoutMs?: number; idleTimeoutMs?: number; fallback?: boolean;
 }
 
@@ -252,6 +254,7 @@ export async function chatStream(messages: ChatMessage[], onChunk: (text: string
             temperature: opts.temperature ?? 0.3,
             top_p: opts.topP ?? 0.9,
             num_predict: opts.numPredict ?? 220,
+            ...(opts.numCtx ? { num_ctx: opts.numCtx } : {}),
           },
         }),
         signal: ac.signal,

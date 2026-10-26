@@ -28,6 +28,7 @@ import planRoutes from './routes/plan.js';
 import achievementsRoutes from './routes/achievements.js';
 import { startChessComSync } from './autoImport.js';
 import learnRoutes from './routes/learn.js';
+import voicesRoutes from './routes/voices.js';
 import { attachPlayWebSocket } from './ws/play.js';
 import { attachLobbyWebSocket } from './ws/lobby.js';
 import { prepareSsoOnlyFirstRun, warnIfNoPublicBaseUrl } from './auth/oidc.js';
@@ -59,6 +60,9 @@ app.use('*', async (c, next) => {
       // violation on every page load; the link still works, the number never
       // appears. One read-only, unauthenticated GET.
       "connect-src 'self' https://api.github.com",
+      // Custom TTS voices: generated speech and mic-recording previews are
+      // played from blob: URLs.
+      "media-src 'self' blob:",
       "base-uri 'self'",
       "frame-ancestors 'none'",
       "form-action 'self'",
@@ -112,6 +116,7 @@ app.route('/api/openings', openingsRoutes);
 app.route('/api/plan', planRoutes);
 app.route('/api/achievements', achievementsRoutes);
 app.route('/api/learn', learnRoutes);
+app.route('/api/voices', voicesRoutes);
 
 // In production, serve the built web app
 import { existsSync, readFileSync } from 'node:fs';

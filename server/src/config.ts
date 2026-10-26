@@ -81,4 +81,6 @@ export const config = {
   projectRoot: PROJECT_ROOT,
   cookieSecure: parseBool(process.env.COOKIE_SECURE, false),
   oidc: loadOidcConfig(),
+  // Local voice-cloning engine (voice-tts). Custom voices are off when it is down.
+  voiceTtsUrl: (process.env.VOICE_TTS_URL ?? 'http://127.0.0.1:8805').replace(/\/+$/, ''),
 };

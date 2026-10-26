@@ -1,9 +1,11 @@
 import { Hono } from 'hono';
+import { z } from 'zod';
 import { streamSSE } from 'hono/streaming';
 import { db } from '../db.js';
 import { requireAuth } from '../auth/middleware.js';
 import { llmConfigured } from '../coach/llm.js';
 import { buildGameReview, reviewCacheKey, type GameReview, REVIEW_PROSE_VERSION } from '../coach/review.js';
+import { gameChat } from '../coach/chat.js';
 import type { AnalysisResult, AnalyzedMove, KeyMomentSummary, PhaseSplit } from '../types.js';
 
 const router = new Hono();
@@ -103,6 +105,60 @@ router.post('/:id/review', async (c) => {
     } catch (err) {
       await stream.writeSSE({ event: 'error', data: err instanceof Error ? err.message : String(err) });
     }
+  });
+});
+
+const chatSchema = z.object({
+  messages: z.array(z.object({
+    role: z.enum(['user', 'assistant']),
+    content: z.string().min(1).max(8000),
+  })).min(1).max(40),
+  ply: z.number().int().positive().nullable().optional(),
+});
+
+// Free-form chat about this game: the whole game, or the move in focus.
+router.post('/:id/chat', async (c) => {
+  const user = c.get('user');
+  const id = Number(c.req.param('id'));
+  const body = await c.req.json().catch(() => null);
+  const parsed = chatSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: 'invalid_input' }, 400);
+  const last = parsed.data.messages[parsed.data.messages.length - 1]!;
+  if (last.role !== 'user') return c.json({ error: 'invalid_input' }, 400);
+
+  const game = db.prepare('SELECT pgn, user_color FROM games WHERE id = ? AND user_id = ?').get(id, user.id) as
+    | { pgn: string; user_color: 'white' | 'black' | null }
+    | undefined;
+  if (!game) return c.json({ error: 'not_found' }, 404);
+  const row = db.prepare(`SELECT depth, accuracy_white, accuracy_black,
+    estimated_elo_white, estimated_elo_black, performance_white, performance_black,
+    opening_eco, opening_name, key_moments_json, phase_split_json, moves_json,
+    prose_json, prose_version, prose_lang, prose_audience
+    FROM analyses WHERE game_id = ?`).get(id) as AnalysisRow | undefined;
+  if (!row) return c.json({ error: 'analysis_required' }, 409);
+  if (!llmConfigured()) return c.json({ error: 'llm_not_configured' }, 503);
+
+  let reviewSummary: string | null = null;
+  try { reviewSummary = row.prose_json ? (JSON.parse(row.prose_json) as GameReview).summary || null : null; } catch { /* ignore */ }
+
+  return streamSSE(c, async (stream) => {
+    try {
+      await gameChat({
+        pgn: game.pgn,
+        analysis: rowToAnalysis(row),
+        userColor: game.user_color ?? 'white',
+        userId: user.id,
+        language: user.profile.language,
+        audience: user.profile.audience,
+        ply: parsed.data.ply ?? null,
+        reviewSummary,
+        messages: parsed.data.messages,
+        onChunk: async (t) => { await stream.writeSSE({ data: t }); },
+      });
+    } catch (err) {
+      await stream.writeSSE({ event: 'error', data: err instanceof Error ? err.message : String(err) });
+    }
+    await stream.writeSSE({ event: 'done', data: '' });
   });
 });
 

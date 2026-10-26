@@ -1,3 +1,6 @@
+> **minkpatzer** is a fork of [SikamikanikoBG/patzer](https://github.com/SikamikanikoBG/patzer).
+> Changes in this fork: chat with the AI coach about a whole game or a single move (follow-up questions under each move explanation, plus an "Ask coach" tab in Game Review), custom cloned TTS voices via a local voice-tts server, a Neo piece-set stylesheet (bring your own images in `web/public/pieces/neo/`), and a locally built Docker setup with host networking.
+
 <p align="center">
   <img src="web/public/icon.svg" width="96" alt="Patzer" />
 </p>

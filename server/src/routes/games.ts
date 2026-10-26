@@ -147,8 +147,14 @@ router.get('/:id', (c) => {
 router.delete('/:id', (c) => {
   const user = c.get('user');
   const id = Number(c.req.param('id'));
-  const r = db.prepare('DELETE FROM games WHERE id = ? AND user_id = ?').run(id, user.id);
-  if (r.changes === 0) return c.json({ error: 'not_found' }, 404);
+  const game = db.prepare('SELECT source FROM games WHERE id = ? AND user_id = ?').get(id, user.id) as
+    | { source: string }
+    | undefined;
+  if (!game) return c.json({ error: 'not_found' }, 404);
+  // Only games against Stockfish. A PvP game is the opponent's history too and
+  // backs their rating; an imported game would reappear on the next import.
+  if (game.source !== 'played') return c.json({ error: 'not_deletable' }, 403);
+  db.prepare('DELETE FROM games WHERE id = ? AND user_id = ?').run(id, user.id);
   return c.json({ ok: true });
 });
 

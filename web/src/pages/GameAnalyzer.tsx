@@ -2,13 +2,14 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams, Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Sparkles, Settings as SettingsIcon, Copy, Download, Check, ListOrdered, FileText, X, Star, Share2, FlipVertical2, NotebookPen, Search, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Sparkles, Settings as SettingsIcon, Copy, Download, Check, ListOrdered, FileText, MessageCircle, X, Star, Share2, FlipVertical2, NotebookPen, Search, Loader2 } from 'lucide-react';
 import { Chess } from 'chess.js';
 import ChessBoard from '../components/ChessBoard';
 import EvalBar from '../components/EvalBar';
 import EvalGraph from '../components/EvalGraph';
 import MoveList from '../components/MoveList';
 import CoachPanel from '../components/CoachPanel';
+import GameChat from '../components/GameChat';
 import GameReportCard, { type MovePick } from '../components/GameReportCard';
 import MoveExplanation from '../components/MoveExplanation';
 import GameReportPanel, { type GameReviewProse } from '../components/GameReportPanel';
@@ -55,7 +56,7 @@ function fmtCp(cp: number | null | undefined): string {
   return `${sign}${(Math.abs(cp) / 100).toFixed(2)}`;
 }
 
-type Tab = 'moves' | 'report' | 'moments';
+type Tab = 'moves' | 'report' | 'moments' | 'chat';
 
 export default function GameAnalyzer() {
   const { id } = useParams<{ id: string }>();
@@ -474,6 +475,9 @@ export default function GameAnalyzer() {
                   <TabBtn active={tab === 'moves'} onClick={() => setTab('moves')} icon={ListOrdered} label={t('review.moves', { defaultValue: 'Moves' })} />
                   <TabBtn active={tab === 'report'} onClick={() => setTab('report')} icon={FileText} label={t('review.gameReport', { defaultValue: 'AI report' })} />
                   <TabBtn active={tab === 'moments'} onClick={() => setTab('moments')} icon={Sparkles} label={t('review.keyMoments', { defaultValue: 'Key moments' })} />
+                  {coachConfigured && (
+                    <TabBtn active={tab === 'chat'} onClick={() => setTab('chat')} icon={MessageCircle} label={t('chat.tab', { defaultValue: 'Ask coach' })} />
+                  )}
                   <button onClick={() => setShowDepthControl((s) => !s)} className="btn-ghost ml-auto p-1.5" title={t('review.depth')}>
                     <SettingsIcon className="h-3.5 w-3.5" />
                   </button>
@@ -494,6 +498,7 @@ export default function GameAnalyzer() {
                   {tab === 'moves' && move && (
                     <MoveExplanation
                       move={move}
+                      gameId={gameId}
                       userColor={data.game.user_color}
                       coachConfigured={coachConfigured}
                       coachRequest={coachReq}
@@ -518,6 +523,9 @@ export default function GameAnalyzer() {
                       onGenerated={setReviewProse}
                       userColor={data.game.user_color}
                     />
+                  )}
+                  {tab === 'chat' && (
+                    <GameChatTab gameId={gameId} move={move ?? null} />
                   )}
                   {tab === 'moments' && (
                     <KeyMomentsList
@@ -671,6 +679,41 @@ function PlayerHeader({ name, accuracy, elo, side, fen, highlighted }: { name: s
           <span className="font-mono text-sm font-bold tabular-nums">{accuracy.toFixed(1)}<span className="text-xs opacity-70">%</span></span>
         )}
       </div>
+    </div>
+  );
+}
+
+/** "Ask coach" tab: chat about the whole game, or about the move on the board. */
+function GameChatTab({ gameId, move }: { gameId: number; move: { ply: number; san: string } | null }) {
+  const { t } = useTranslation();
+  const [focusMove, setFocusMove] = useState(false);
+  const focused = focusMove && move ? move : null;
+  const label = move ? `${Math.ceil(move.ply / 2)}${move.ply % 2 === 1 ? '.' : '…'} ${move.san}` : '';
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-1.5 text-xs">
+        <span className="text-chesscom-500">{t('chat.about', { defaultValue: 'About:' })}</span>
+        <button onClick={() => setFocusMove(false)}
+          className={`rounded-full px-2.5 py-0.5 ${!focused ? 'bg-gold-500/20 font-semibold text-chesscom-900 dark:text-chesscom-100' : 'text-chesscom-500 hover:bg-chesscom-100 dark:hover:bg-chesscom-800'}`}>
+          {t('chat.wholeGame', { defaultValue: 'Whole game' })}
+        </button>
+        {move && (
+          <button onClick={() => setFocusMove(true)}
+            className={`rounded-full px-2.5 py-0.5 font-mono ${focused ? 'bg-gold-500/20 font-semibold text-chesscom-900 dark:text-chesscom-100' : 'text-chesscom-500 hover:bg-chesscom-100 dark:hover:bg-chesscom-800'}`}>
+            {label}
+          </button>
+        )}
+      </div>
+      <GameChat
+        gameId={gameId}
+        ply={focused?.ply ?? null}
+        suggestions={[
+          t('chat.sugOverall', { defaultValue: 'How did I play overall?' }),
+          t('chat.sugWhereLost', { defaultValue: 'Where did it go wrong for me?' }),
+          t('chat.sugImprove', { defaultValue: 'What should I work on after this game?' }),
+          t('chat.sugBest', { defaultValue: 'What was my best move?' }),
+        ]}
+      />
     </div>
   );
 }

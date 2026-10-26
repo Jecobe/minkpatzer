@@ -1,0 +1,13 @@
+/* Neo piece set. Images live in web/public/pieces/neo/ (wk.png … bp.png). */
+.cg-wrap piece.king.white { background-image: url('/pieces/neo/wk.png'); }
+.cg-wrap piece.queen.white { background-image: url('/pieces/neo/wq.png'); }
+.cg-wrap piece.rook.white { background-image: url('/pieces/neo/wr.png'); }
+.cg-wrap piece.bishop.white { background-image: url('/pieces/neo/wb.png'); }
+.cg-wrap piece.knight.white { background-image: url('/pieces/neo/wn.png'); }
+.cg-wrap piece.pawn.white { background-image: url('/pieces/neo/wp.png'); }
+.cg-wrap piece.king.black { background-image: url('/pieces/neo/bk.png'); }
+.cg-wrap piece.queen.black { background-image: url('/pieces/neo/bq.png'); }
+.cg-wrap piece.rook.black { background-image: url('/pieces/neo/br.png'); }
+.cg-wrap piece.bishop.black { background-image: url('/pieces/neo/bb.png'); }
+.cg-wrap piece.knight.black { background-image: url('/pieces/neo/bn.png'); }
+.cg-wrap piece.pawn.black { background-image: url('/pieces/neo/bp.png'); }

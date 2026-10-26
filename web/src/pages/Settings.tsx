@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { LANGUAGES, type Language } from '../lib/languages';
 import { Volume2, Save, User as UserIcon, Palette, Sparkles, Type, Check, Smile } from 'lucide-react';
 import { api } from '../api';
 import { useAuth, type Profile, type BoardTheme, type SiteTheme, type SoundSet, type MoveSoundSet } from '../state/auth';
-import { getVoices, onVoicesReady, speak } from '../lib/tts';
+import { getVoices, onVoicesReady, speak, customVoiceId, CUSTOM_PREFIX } from '../lib/tts';
+import CustomVoices, { type VoicesResponse } from '../components/CustomVoices';
 import { moveSoundsReady, playSound, setMoveSoundSet, setSoundSet } from '../lib/sounds';
 
 const EMOJIS = ['♟','♞','♝','♜','♛','♚','🦊','🐯','🦁','🐻','🐼','🐰','🐶','🐱','🐹','🐢','🐧','🐳','⭐','🌟'];
@@ -19,6 +21,12 @@ export default function Settings() {
 
   useEffect(() => { if (user) setForm({ ...user.profile }); }, [user]);
   useEffect(() => onVoicesReady(() => setVoices(getVoices())), []);
+  const { data: customVoices } = useQuery({
+    queryKey: ['voices'],
+    queryFn: () => api.get<VoicesResponse>('/api/voices'),
+    // Poll while the engine is still loading its model, so the page wakes up.
+    refetchInterval: (q) => (q.state.data && q.state.data.engine.up && !q.state.data.engine.ready ? 3000 : false),
+  });
 
   if (!form) return null;
 
@@ -304,6 +312,13 @@ export default function Settings() {
                 <label className="label mb-1 block">{t('settings.ttsVoice')}</label>
                 <select className="input" value={form.tts_voice ?? ''} onChange={(e) => set('tts_voice', e.target.value || null)}>
                   <option value="">{t('settings.ttsVoiceNone')}</option>
+                  {!!customVoices?.voices.length && (
+                    <optgroup label={t('settings.customVoice.title')}>
+                      {customVoices.voices.map((v) => (
+                        <option key={v.id} value={`${CUSTOM_PREFIX}${v.id}`}>{v.name}</option>
+                      ))}
+                    </optgroup>
+                  )}
                   {langVoices.map((v) => (
                     <option key={v.voiceURI} value={v.voiceURI}>{v.name} ({v.lang})</option>
                   ))}
@@ -317,10 +332,10 @@ export default function Settings() {
                   <label className="label mb-1 block">{t('settings.ttsRate')}: <span className="font-mono text-ink-700 dark:text-ink-200">{form.tts_rate.toFixed(2)}</span></label>
                   <input type="range" min={0.5} max={2} step={0.05} value={form.tts_rate} onChange={(e) => set('tts_rate', Number(e.target.value))} className="w-full" />
                 </div>
-                <div>
+                {customVoiceId(form.tts_voice) === null && <div>
                   <label className="label mb-1 block">{t('settings.ttsPitch')}: <span className="font-mono text-ink-700 dark:text-ink-200">{form.tts_pitch.toFixed(2)}</span></label>
                   <input type="range" min={0} max={2} step={0.05} value={form.tts_pitch} onChange={(e) => set('tts_pitch', Number(e.target.value))} className="w-full" />
-                </div>
+                </div>}
               </div>
               <button onClick={() => {
                 const text = i18n.getFixedT(form.language)('settings.ttsPreviewText');
@@ -328,6 +343,12 @@ export default function Settings() {
               }} className="btn-secondary self-start text-sm">
                 <Volume2 className="h-4 w-4" /> {t('settings.ttsPreview')}
               </button>
+              <CustomVoices
+                data={customVoices}
+                selected={form.tts_voice}
+                onSelect={(v) => set('tts_voice', v)}
+                rate={form.tts_rate}
+              />
             </>
           )}
         </div>

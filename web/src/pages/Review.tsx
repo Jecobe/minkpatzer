@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Download, Trophy, Frown, Equal, BookOpen, Inbox, Settings as SettingsIcon, Star, Search, X } from 'lucide-react';
+import { Download, Trophy, Frown, Equal, BookOpen, Inbox, Settings as SettingsIcon, Star, Search, X, Trash2 } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../state/auth';
 import { fmtAccuracy, fmtTimeControl } from '../lib/utils';
@@ -188,7 +188,19 @@ function GameCard({ g }: { g: GameRow }) {
     },
     onSettled: () => qc.invalidateQueries({ queryKey: ['games'] }),
   });
+  // Only games against Stockfish can be removed: PvP games are shared with the
+  // opponent and feed ratings, and imports would just come back on re-import.
+  const del = useMutation({
+    mutationFn: () => api.del(`/api/games/${g.id}`),
+    onSuccess: () => {
+      qc.setQueriesData<{ games: GameRow[] }>({ queryKey: ['games'] }, (old) =>
+        old ? { games: old.games.filter((row) => row.id !== g.id) } : old);
+      qc.invalidateQueries();
+    },
+  });
   const isStarred = !!g.bookmarked;
+  const canDelete = g.source === 'played';
+  const opponent = g.user_color === 'white' ? g.black : g.white;
 
   return (
     <div className="card-hover group relative flex items-center gap-3 p-3 sm:gap-4 sm:p-4">
@@ -237,6 +249,20 @@ function GameCard({ g }: { g: GameRow }) {
       >
         <Star className={cn('h-4 w-4', isStarred && 'fill-gold-500')} />
       </button>
+      {canDelete && (
+        <button
+          onClick={(e) => {
+            e.preventDefault(); e.stopPropagation();
+            if (confirm(t('review.deleteConfirm', { opponent }))) del.mutate();
+          }}
+          disabled={del.isPending}
+          title={t('review.deleteGame')}
+          aria-label={t('review.deleteGame')}
+          className="rounded-md p-1.5 text-chesscom-300 opacity-0 transition-colors hover:bg-bad/10 hover:text-bad focus:opacity-100 group-hover:opacity-100 disabled:opacity-50 dark:hover:bg-bad/15"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+      )}
     </div>
   );
 }

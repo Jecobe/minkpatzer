@@ -407,6 +407,16 @@ ensureColumn('sessions', 'oidc_id_token', 'TEXT');
 // console) or 'sso' (created by a single sign-on login). Shown in Admin → Users.
 ensureColumn('users', 'created_via', "TEXT NOT NULL DEFAULT 'password'");
 
+// Custom TTS voices. The reference audio itself lives with the voice engine
+// (voice-tts on the host, keyed `u<user>-v<id>`); this is just the list.
+db.exec(`CREATE TABLE IF NOT EXISTS custom_voices (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  duration REAL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+)`);
+
 // Automatic review. When a game finishes, ws/play.ts calls kickAutoReview()
 // (see autoReview.ts), which writes the AI Game Review prose for every game
 // that has an analysis row but no cached review yet. No dedicated column is
