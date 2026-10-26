@@ -12,6 +12,7 @@ import { requireAuth } from '../auth/middleware.js';
 import { onlineUserIds } from '../ws/lobby.js';
 import { GLICKO_DEFAULTS, PROVISIONAL_RD_THRESHOLD, PROVISIONAL_GAMES } from '../chess/glicko.js';
 import type { TimeClass } from '../chess/timeClass.js';
+import { externalRatings, siteIcon, type ExternalSite } from '../externalRatings.js';
 
 const router = new Hono();
 router.use('*', requireAuth);
@@ -211,6 +212,28 @@ router.get('/:id', (c) => {
     recent_games,
     head_to_head,
   });
+});
+
+// GET /api/players/site-icons/:site — the Chess.com / Lichess favicon, served
+// from our origin so the CSP (img-src 'self') lets the badges show it.
+router.get('/site-icons/:site', async (c) => {
+  const site = c.req.param('site').replace(/\.\w+$/, '') as ExternalSite;
+  if (site !== 'chesscom' && site !== 'lichess') return c.json({ error: 'not_found' }, 404);
+  const icon = await siteIcon(site);
+  if (!icon) return c.body(null, 404);
+  return c.body(icon.body, 200, { 'Content-Type': icon.type, 'Cache-Control': 'public, max-age=86400' });
+});
+
+// GET /api/players/:id/external-ratings — their Chess.com / Lichess ratings,
+// limited to what they chose to show (Settings → rating display).
+router.get('/:id/external-ratings', async (c) => {
+  const id = Number(c.req.param('id'));
+  if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'invalid_id' }, 400);
+  const profile = db.prepare('SELECT chesscom_username, lichess_username, rating_display FROM profiles WHERE user_id = ?').get(id) as
+    | { chesscom_username: string | null; lichess_username: string | null; rating_display: string | null }
+    | undefined;
+  if (!profile) return c.json({ error: 'not_found' }, 404);
+  return c.json(await externalRatings(profile));
 });
 
 export default router;

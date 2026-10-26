@@ -7,6 +7,8 @@ import { api } from '../api';
 import { useAuth, type Profile, type BoardTheme, type SiteTheme, type SoundSet, type MoveSoundSet } from '../state/auth';
 import { getVoices, onVoicesReady, speak, customVoiceId, CUSTOM_PREFIX } from '../lib/tts';
 import CustomVoices, { type VoicesResponse } from '../components/CustomVoices';
+import { SiteIcon } from '../components/ExternalRatings';
+import { useQueryClient } from '@tanstack/react-query';
 import { moveSoundsReady, playSound, setMoveSoundSet, setSoundSet } from '../lib/sounds';
 
 const EMOJIS = ['♟','♞','♝','♜','♛','♚','🦊','🐯','🦁','🐻','🐼','🐰','🐶','🐱','🐹','🐢','🐧','🐳','⭐','🌟'];
@@ -17,6 +19,7 @@ export default function Settings() {
   const [form, setForm] = useState<Profile | null>(null);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [saved, setSaved] = useState(false);
+  const qc = useQueryClient();
   const [dirty, setDirty] = useState(false);
 
   useEffect(() => { if (user) setForm({ ...user.profile }); }, [user]);
@@ -44,6 +47,7 @@ export default function Settings() {
       audience: form.audience,
       chesscom_username: form.chesscom_username || null,
       lichess_username: form.lichess_username || null,
+      rating_display: form.rating_display ?? 'both',
       coach_behavior: form.coach_behavior,
       tts_enabled: !!form.tts_enabled,
       tts_voice: form.tts_voice,
@@ -60,6 +64,8 @@ export default function Settings() {
     });
     await i18n.changeLanguage(form.language);
     await refresh();
+    // Usernames or the rating display may have changed.
+    void qc.invalidateQueries({ queryKey: ['external-ratings'] });
     setSaved(true); setDirty(false);
     setTimeout(() => setSaved(false), 1800);
   }
@@ -156,6 +162,30 @@ export default function Settings() {
             <label className="label mb-1 block">{t('settings.lichess')}</label>
             <input className="input" value={form.lichess_username ?? ''} onChange={(e) => set('lichess_username', e.target.value)} placeholder="username" />
             <div className="mt-1 text-xs text-ink-400">{t('settings.lichessHelp')}</div>
+          </div>
+          <div>
+            <label className="label mb-1 block">{t('settings.ratingDisplay', { defaultValue: 'Show my ratings' })}</label>
+            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+              {([
+                ['both', t('settings.ratingDisplayBoth', { defaultValue: 'Both' })],
+                ['chesscom', 'Chess.com'],
+                ['lichess', 'Lichess'],
+                ['none', t('settings.ratingDisplayNone', { defaultValue: 'None' })],
+              ] as const).map(([v, label]) => {
+                const active = (form.rating_display ?? 'both') === v;
+                return (
+                  <button key={v} type="button" onClick={() => set('rating_display', v)}
+                    className={`flex items-center justify-center gap-1.5 rounded-md border px-2 py-1.5 text-sm transition-colors ${active
+                      ? 'border-gold-500 bg-gold-500/10 font-semibold'
+                      : 'border-chesscom-200 hover:bg-chesscom-100 dark:border-chesscom-700 dark:hover:bg-chesscom-800'}`}>
+                    {(v === 'both' || v === 'chesscom') && <SiteIcon site="chesscom" />}
+                    {(v === 'both' || v === 'lichess') && <SiteIcon site="lichess" />}
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="mt-1 text-xs text-ink-400">{t('settings.ratingDisplayHelp', { defaultValue: 'Shown next to your name on your profile, in the challenge list and on the board, from the usernames above.' })}</div>
           </div>
         </div>
       </section>

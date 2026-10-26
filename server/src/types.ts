@@ -21,6 +21,8 @@ export interface Profile {
   audience: Audience;
   chesscom_username: string | null;
   lichess_username: string | null;
+  /** Outside ratings shown next to the name: 'both' | 'chesscom' | 'lichess' | 'none'. */
+  rating_display: string;
   coach_behavior: CoachBehavior;
   tts_enabled: number;
   tts_voice: string | null;

@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Swords, Check, Loader2, Target, Flame, Calendar } from 'lucide-react';
 import { api } from '../api';
+import { RatingBadges, ExternalRatingsCard } from '../components/ExternalRatings';
 import { useAuth } from '../state/auth';
 import { useLobby } from '../state/lobby';
 import { cn, fmtTimeControl } from '../lib/utils';
@@ -97,6 +98,7 @@ export default function PlayerProfile() {
             <h1 className="truncate text-2xl font-bold tracking-tight sm:text-3xl">{player.display_name}</h1>
             <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm text-white/70">
               <span>@{player.username}</span>
+              <RatingBadges userId={player.id} className="text-white" />
               <span className="inline-flex items-center gap-1">
                 <Calendar className="h-3.5 w-3.5" />
                 {t('players.memberSince', { defaultValue: 'Joined {{date}}', date: new Date(player.created_at).toLocaleDateString() })}
@@ -228,6 +230,8 @@ export default function PlayerProfile() {
               )}
             </section>
           )}
+
+          <ExternalRatingsCard userId={player.id} />
 
           {!isMe && <ChallengeBox toUserId={player.id} displayName={player.display_name} onPlay={(gid) => nav(`/play?game=${gid}`)} />}
         </div>

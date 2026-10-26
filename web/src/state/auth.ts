@@ -20,6 +20,8 @@ export interface Profile {
   audience: Audience;
   chesscom_username: string | null;
   lichess_username: string | null;
+  /** Which outside ratings show next to the name. */
+  rating_display: 'both' | 'chesscom' | 'lichess' | 'none';
   coach_behavior: CoachBehavior;
   tts_enabled: number;
   tts_voice: string | null;

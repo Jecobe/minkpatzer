@@ -198,6 +198,8 @@ try {
 
 // Lichess username for the game importer, next to the Chess.com one.
 ensureColumn('profiles', 'lichess_username', 'TEXT');
+// Which outside ratings (Chess.com / Lichess) show next to the player's name.
+ensureColumn('profiles', 'rating_display', `TEXT NOT NULL DEFAULT 'both'`);
 
 // v6.0.0 — Tactic Trainer attempts. Each row is one user attempt at a puzzle
 // extracted from one of their own blunders / missed mates.

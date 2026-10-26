@@ -6,6 +6,7 @@ import { motion, AnimatePresence, useDragControls, useReducedMotion } from 'fram
 import { Chess } from 'chess.js';
 import ChessBoard from '../components/ChessBoard';
 import ClassificationBadge from '../components/ClassificationBadge';
+import { RatingBadges } from '../components/ExternalRatings';
 import CoachPanel from '../components/CoachPanel';
 import CapturedPieces from '../components/CapturedPieces';
 import PieceEmotionsOverlay from '../components/PieceEmotionsOverlay';
@@ -187,7 +188,7 @@ export default function Play() {
   const [coachConfigured, setCoachConfigured] = useState(false);
   const [hint, setHint] = useState<{ from: string; to: string } | null>(null);
   const [hintLoading, setHintLoading] = useState(false);
-  const [opponent, setOpponent] = useState<{ display_name: string; online: boolean } | null>(null);
+  const [opponent, setOpponent] = useState<{ user_id: number; display_name: string; online: boolean } | null>(null);
   const [blunder, setBlunder] = useState<BlunderPreview | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [gameOverDismissed, setGameOverDismissed] = useState(false);
@@ -449,7 +450,7 @@ export default function Play() {
         setPending(null);
         if (msg.fen) setFen(msg.fen);
         if (msg.your_color) setUserColor(msg.your_color);
-        if (msg.opponent) setOpponent({ display_name: msg.opponent.display_name, online: msg.opponent.online });
+        if (msg.opponent) setOpponent({ user_id: msg.opponent.user_id, display_name: msg.opponent.display_name, online: msg.opponent.online });
         if (msg.whiteTimeMs !== undefined) setWhiteMs(msg.whiteTimeMs);
         if (msg.blackTimeMs !== undefined) setBlackMs(msg.blackTimeMs);
         if (msg.time_control) setTc(msg.time_control as typeof TIME_CONTROLS[number]);
@@ -955,7 +956,7 @@ export default function Play() {
             board shrinks vertically on short screens without making the
             column itself narrow. */}
         <div className="mx-auto w-full lg:mx-0 lg:flex-1 lg:max-w-[760px]">
-          <ClockBar timeMs={userColor === 'white' ? blackMs : whiteMs} active={turn !== userColor} label={oppLabel} flip />
+          <ClockBar timeMs={userColor === 'white' ? blackMs : whiteMs} active={turn !== userColor} label={oppLabel} ratingsFor={opponent?.user_id} flip />
           {/* Say it plainly rather than letting a dead socket look like a live
               game. The clock is frozen behind this and the game is safe on the
               server — which is the reassurance worth giving. */}
@@ -1038,7 +1039,7 @@ export default function Play() {
           <div className="my-1 flex items-center justify-between gap-2">
             <CapturedPieces fen={fen} side={userColor} />
           </div>
-          <ClockBar timeMs={userColor === 'white' ? whiteMs : blackMs} active={turn === userColor} label={user?.profile.display_name ?? (userColor === 'white' ? t('play.white') : t('play.black'))} />
+          <ClockBar timeMs={userColor === 'white' ? whiteMs : blackMs} active={turn === userColor} label={user?.profile.display_name ?? (userColor === 'white' ? t('play.white') : t('play.black'))} ratingsFor={user?.id} />
 
           {/* Rewind nav — visible once at least one move has been played */}
           {phase !== 'setup' && positions.length > 1 && (
@@ -1507,7 +1508,7 @@ function FriendTab({ onChallengeAccepted }: { onChallengeAccepted: (gameId: numb
                   <span className="text-xl">{u.avatar_emoji}</span>
                   <div className="flex-1">
                     <div className="text-sm font-medium">{u.display_name}</div>
-                    <div className="text-xs opacity-70">@{u.username}</div>
+                    <div className="flex items-center gap-2 text-xs"><span className="opacity-70">@{u.username}</span><RatingBadges userId={u.id} /></div>
                   </div>
                   <span className={`h-2.5 w-2.5 rounded-full ${u.online ? 'bg-green-500' : 'bg-chesscom-400/60'}`} title={u.online ? 'online' : 'offline'} />
                 </button>
@@ -1526,7 +1527,7 @@ function FriendTab({ onChallengeAccepted }: { onChallengeAccepted: (gameId: numb
   );
 }
 
-function ClockBar({ timeMs, active, label, flip }: { timeMs: number; active: boolean; label: string; flip?: boolean }) {
+function ClockBar({ timeMs, active, label, ratingsFor, flip }: { timeMs: number; active: boolean; label: string; ratingsFor?: number; flip?: boolean }) {
   // Under 30s the clock is the thing you need to read at a glance, so it grows
   // and the row grows with it; under 10s it also goes red and pulses. Only for
   // the side actually on the clock — a big number on the idle side is noise.
@@ -1538,7 +1539,10 @@ function ClockBar({ timeMs, active, label, flip }: { timeMs: number; active: boo
       ${active
         ? (critical ? 'bg-bad text-white animate-pulse-soft' : 'bg-green-500 text-white')
         : 'bg-chesscom-100 text-chesscom-500 dark:bg-chesscom-800 dark:text-chesscom-300'} ${flip ? '' : ''}`}>
-      <span className="text-xs font-semibold uppercase tracking-wide">{label}</span>
+      <span className="flex min-w-0 items-center gap-2">
+        <span className="truncate text-xs font-semibold uppercase tracking-wide">{label}</span>
+        <RatingBadges userId={ratingsFor} />
+      </span>
       <span
         className={`font-mono font-bold tabular-nums transition-all ${urgent ? 'text-3xl leading-none tracking-tight sm:text-4xl' : 'text-lg'}`}
         aria-live={critical ? 'assertive' : 'off'}
