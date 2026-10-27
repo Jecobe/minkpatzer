@@ -1,7 +1,8 @@
 // Chat with the coach about one analysed game — the whole game, or the move
 // in focus. Used under the move explanation (follow-up questions about that
 // move, seeded with the coach's explanation) and in Game Review's "Ask coach"
-// tab (questions about the whole game). Streams from POST /api/games/:id/chat.
+// tab (questions about the whole game). Streams from POST /api/games/:id/chat,
+// or from another chat endpoint (the Lab's position chat) given `endpoint`.
 
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -13,9 +14,14 @@ import { ThinkingDots } from './Spinner';
 export interface ChatMsg { role: 'user' | 'assistant'; content: string }
 
 interface Props {
-  gameId: number;
+  gameId?: number;
   /** The move the questions are about (1 = White's first move); null = the whole game. */
-  ply: number | null;
+  ply?: number | null;
+  /** Another chat endpoint, and what to send it besides the messages. */
+  endpoint?: string;
+  body?: Record<string, unknown>;
+  /** Asks this question as soon as `n` changes (a "Why?" button elsewhere). */
+  ask?: { text: string; n: number } | null;
   /** An answer the conversation picks up from (the coach's move explanation). */
   seed?: string;
   /** Clears the conversation when it changes (e.g. a different move). */
@@ -27,16 +33,26 @@ interface Props {
   inline?: boolean;
 }
 
-export default function GameChat({ gameId, ply, seed, resetKey, suggestions = [], placeholder, inline }: Props) {
+export default function GameChat({ gameId, ply = null, endpoint, body, ask, seed, resetKey, suggestions = [], placeholder, inline }: Props) {
   const { t } = useTranslation();
-  const [messages, setMessages] = useState<ChatMsg[]>([]);
+  const [messages, setMessagesState] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
+  // The conversation as of now, for a question sent before React re-renders
+  // (one asked from outside while an answer is being cut off).
+  const messagesRef = useRef<ChatMsg[]>([]);
+  const setMessages = (next: ChatMsg[] | ((ms: ChatMsg[]) => ChatMsg[])) => {
+    messagesRef.current = typeof next === 'function' ? next(messagesRef.current) : next;
+    setMessagesState(messagesRef.current);
+  };
+  // Which request owns the conversation; a superseded one leaves it alone.
+  const reqRef = useRef(0);
 
   useEffect(() => {
+    reqRef.current++;
     abortRef.current?.abort();
     setMessages([]); setInput(''); setError(null); setBusy(false);
   }, [resetKey, gameId]);
@@ -46,13 +62,18 @@ export default function GameChat({ gameId, ply, seed, resetKey, suggestions = []
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages]);
 
-  async function send(text: string) {
+  async function send(text: string, force = false) {
     const q = text.trim();
-    if (!q || busy) return;
+    if (!q || (busy && !force)) return;
+    // A forced question cuts off the answer in progress, keeping what it said.
+    abortRef.current?.abort();
+    const me = ++reqRef.current;
+    const mine = () => reqRef.current === me;
     const ac = new AbortController(); abortRef.current = ac;
+    const prior = messagesRef.current.filter((m) => m.content.trim());
     // The seed explanation goes first so "why?" and "what about instead…"
     // follow on from it.
-    const history: ChatMsg[] = [...messages, { role: 'user', content: q }];
+    const history: ChatMsg[] = [...prior, { role: 'user', content: q }];
     const sent: ChatMsg[] = seed ? [{ role: 'assistant', content: seed }, ...history] : history;
     setMessages([...history, { role: 'assistant', content: '' }]);
     setInput(''); setBusy(true); setError(null);
@@ -64,11 +85,11 @@ export default function GameChat({ gameId, ply, seed, resetKey, suggestions = []
       return next;
     });
     try {
-      const res = await fetch(`/api/games/${gameId}/chat`, {
+      const res = await fetch(endpoint ?? `/api/games/${gameId}/chat`, {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'patzer' },
-        body: JSON.stringify({ messages: sent, ply }),
+        body: JSON.stringify(endpoint ? { ...body, messages: sent } : { messages: sent, ply }),
         signal: ac.signal,
       });
       if (!res.ok || !res.body) {
@@ -87,12 +108,14 @@ export default function GameChat({ gameId, ply, seed, resetKey, suggestions = []
           const block = buf.slice(0, nl);
           buf = buf.slice(nl + 2);
           const { event, data } = parseSseBlock(block);
+          if (!mine()) continue;
           if (event === 'message') { acc += data; update(acc); }
           else if (event === 'error') setError(t('coach.error'));
         }
       }
-      if (!acc.trim()) setMessages((ms) => ms.slice(0, -1));
+      if (mine() && !acc.trim()) setMessages((ms) => ms.slice(0, -1));
     } catch (e) {
+      if (!mine()) return;
       if ((e as Error).name === 'AbortError') {
         if (!acc.trim()) setMessages((ms) => ms.slice(0, -1));
       } else {
@@ -100,9 +123,19 @@ export default function GameChat({ gameId, ply, seed, resetKey, suggestions = []
         setMessages((ms) => ms.slice(0, -1));
       }
     } finally {
-      setBusy(false);
+      if (mine()) setBusy(false);
     }
   }
+
+  // A question asked from outside the chat (a "Why?" button).
+  const askedRef = useRef(ask?.n);
+  const sendRef = useRef(send);
+  sendRef.current = send;
+  useEffect(() => {
+    if (!ask || ask.n === askedRef.current) return;
+    askedRef.current = ask.n;
+    void sendRef.current(ask.text, true);
+  }, [ask]);
 
   const empty = messages.length === 0;
 

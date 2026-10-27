@@ -8,8 +8,9 @@ import { Link } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import { Chess } from 'chess.js';
 import {
-  Microscope, RotateCcw, FlipVertical2, Wand2, Loader2, Swords,
+  Microscope, RotateCcw, FlipVertical2, Wand2, Loader2, Swords, MessageCircle, HelpCircle,
 } from 'lucide-react';
+import GameChat from '../components/GameChat';
 import ChessBoard from '../components/ChessBoard';
 import ThreatPanel from '../components/ThreatPanel';
 import ExplorerPanel from '../components/ExplorerPanel';
@@ -63,6 +64,10 @@ export default function Lab() {
   const [orientation, setOrientation] = useState<'white' | 'black'>('white');
   const [fenInput, setFenInput] = useState(initialFen);
   const [fenError, setFenError] = useState<string | null>(null);
+
+  // "Why?" on an engine line asks the coach about that move.
+  const [focus, setFocus] = useState<number | null>(null);
+  const [ask, setAsk] = useState<{ text: string; n: number } | null>(null);
 
   const [depth, setDepth] = useState(12);
   const [lines, setLines] = useState(5);
@@ -157,6 +162,20 @@ export default function Lab() {
   }
 
   const result = analyze.data;
+  // The lines describe the position they were run on; after a move on the
+  // board they're stale, and so is a chat about them.
+  const current = result && result.fen === fen ? result : undefined;
+
+  function askWhy(i: number) {
+    if (!current) return;
+    const line = current.lines[i]!;
+    const best = current.lines[0]!;
+    const text = i === 0
+      ? t('lab.whyBest', { defaultValue: 'Why does the engine choose {{move}} here?', move: line.san })
+      : t('lab.whyOther', { defaultValue: 'Why is {{move}} the engine\'s #{{rank}} choice, and how does it compare with {{best}}?', move: line.san, rank: i + 1, best: best.san });
+    setFocus(i);
+    setAsk((a) => ({ text, n: (a?.n ?? 0) + 1 }));
+  }
   const arrows = useMemo(() => {
     if (!result || result.lines.length === 0) return [];
     const best = result.lines[0];
@@ -244,7 +263,7 @@ export default function Lab() {
                 {t('lab.engine', { defaultValue: 'Engine analysis' })}
               </h2>
               <button
-                onClick={() => analyze.mutate()}
+                onClick={() => { setFocus(null); analyze.mutate(); }}
                 disabled={analyze.isPending}
                 className="btn-primary text-sm"
               >
@@ -281,7 +300,7 @@ export default function Lab() {
           ) : result && result.lines.length > 0 ? (
             <div className="card divide-y divide-chesscom-100 dark:divide-chesscom-700">
               {result.lines.map((line, i) => (
-                <LineRow key={i} line={line} rank={i + 1} onPlay={playLineMove} />
+                <LineRow key={i} line={line} rank={i + 1} onPlay={playLineMove} onWhy={current ? () => askWhy(i) : undefined} />
               ))}
               <div className="px-3 py-1.5 text-right text-[11px] text-chesscom-400">
                 {t('lab.depthLabel', { defaultValue: 'depth' })} {result.depth}
@@ -294,6 +313,32 @@ export default function Lab() {
           ) : (
             <div className="card p-4 text-center text-sm text-chesscom-500">
               {t('lab.idlePrompt', { defaultValue: 'Click Analyze to see what Stockfish thinks.' })}
+            </div>
+          )}
+
+          {current && current.lines.length > 0 && (
+            <div className="card space-y-2 p-3">
+              <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-chesscom-500">
+                <MessageCircle className="h-3.5 w-3.5" />
+                {t('lab.askCoach', { defaultValue: 'Ask the coach' })}
+              </h2>
+              <GameChat
+                endpoint="/api/coach/position-chat"
+                body={{
+                  fen: current.fen,
+                  lines: current.lines.map((l) => ({ san: l.san, pv_san: l.pv_san, cp: l.cp, mate: l.mate })),
+                  focus,
+                  history: history.slice(0, historyIndex).map((h) => h.san),
+                }}
+                ask={ask}
+                resetKey={`${current.fen}|${analyze.submittedAt}`}
+                suggestions={[
+                  t('lab.whyBest', { defaultValue: 'Why does the engine choose {{move}} here?', move: current.lines[0]!.san }),
+                  t('lab.askPlan', { defaultValue: 'What is the plan in this position?' }),
+                  ...(current.lines.length > 1 ? [t('lab.askCompare', { defaultValue: 'What separates the top moves?' })] : []),
+                ]}
+                placeholder={t('lab.chatPlaceholder', { defaultValue: 'Ask why the engine likes a move, or why not another…' })}
+              />
             </div>
           )}
 
@@ -356,7 +401,8 @@ export default function Lab() {
   );
 }
 
-function LineRow({ line, rank, onPlay }: { line: AnalyzeLine; rank: number; onPlay: (uci: string) => void }) {
+function LineRow({ line, rank, onPlay, onWhy }: { line: AnalyzeLine; rank: number; onPlay: (uci: string) => void; onWhy?: () => void }) {
+  const { t } = useTranslation();
   const evalLabel = formatEval(line.cp, line.mate);
   const evalTone =
     line.mate != null
@@ -391,6 +437,12 @@ function LineRow({ line, rank, onPlay }: { line: AnalyzeLine; rank: number; onPl
           </span>
         )}
       </div>
+      {onWhy && (
+        <button onClick={onWhy} className="btn-ghost shrink-0 px-1.5 py-0.5 text-[11px]" title={t('lab.whyTitle', { defaultValue: 'Ask the coach why the engine picks this move' })}>
+          <HelpCircle className="h-3.5 w-3.5" />
+          {t('lab.why', { defaultValue: 'Why?' })}
+        </button>
+      )}
     </div>
   );
 }

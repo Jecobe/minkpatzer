@@ -32,7 +32,7 @@ export interface GameChatArgs {
   signal?: AbortSignal;
 }
 
-const LANG_NAME: Record<Language, string> = { en: 'English', bg: 'Bulgarian', es: 'Spanish', de: 'German', ru: 'Russian' };
+export const LANG_NAME: Record<Language, string> = { en: 'English', bg: 'Bulgarian', es: 'Spanish', de: 'German', ru: 'Russian' };
 
 const sideOf = (ply: number): 'white' | 'black' => (ply % 2 === 1 ? 'white' : 'black');
 const moveNo = (m: Pick<AnalyzedMove, 'ply' | 'san'>) =>
@@ -128,6 +128,15 @@ export async function gameChat(args: GameChatArgs): Promise<void> {
     ...args.messages.slice(-12),
   ];
 
+  await streamAnswer(messages, args.onChunk, args.signal);
+}
+
+/** Stream a chat answer in order, without a reasoning model's <think> block. */
+export async function streamAnswer(
+  messages: ChatMessage[],
+  onChunk: (t: string) => void | Promise<void>,
+  signal?: AbortSignal,
+): Promise<void> {
   let inThink = false;
   // Chunks are written in order: each write waits for the one before it.
   let pending: Promise<void> = Promise.resolve();
@@ -146,7 +155,7 @@ export async function gameChat(args: GameChatArgs): Promise<void> {
         out += s.slice(0, start); inThink = true; s = s.slice(start + 7);
       }
     }
-    if (out) pending = pending.then(() => args.onChunk(out));
-  }, { temperature: 0.3, numPredict: 700, numCtx: 8192, signal: args.signal, hardTimeoutMs: 180_000 });
+    if (out) pending = pending.then(() => onChunk(out));
+  }, { temperature: 0.3, numPredict: 700, numCtx: 8192, signal, hardTimeoutMs: 180_000 });
   await pending;
 }
