@@ -3,7 +3,7 @@ import type { Context } from 'hono';
 import { getSignedCookie, setSignedCookie, deleteCookie } from 'hono/cookie';
 import { db, getSetting, userCount } from '../db.js';
 import { config, type OidcMatchBy } from '../config.js';
-import { publicBaseUrl } from '../publicUrl.js';
+import { publicBaseUrl, secureCookies } from '../publicUrl.js';
 import { setSignupMode } from './invites.js';
 
 // Single sign-on with any OpenID Connect provider (Authentik, Keycloak,
@@ -94,7 +94,7 @@ export async function beginOidcLogin(c: Context): Promise<string> {
     sameSite: 'Lax',
     path: FLOW_COOKIE_PATH,
     maxAge: FLOW_MAX_AGE_SECONDS,
-    secure: config.cookieSecure,
+    secure: secureCookies(c),
   });
   const url = client.buildAuthorizationUrl(cfg, {
     redirect_uri: redirectUri(c),

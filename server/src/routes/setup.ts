@@ -7,6 +7,7 @@ import { hashPassword } from '../auth/passwords.js';
 import { createSession, SESSION_COOKIE_NAME, SESSION_MAX_AGE_SECONDS } from '../auth/sessions.js';
 import { testConnection } from '../coach/llm.js';
 import { connectionHint } from '../coach/connectionHint.js';
+import { secureCookies } from '../publicUrl.js';
 
 const router = new Hono();
 
@@ -122,7 +123,7 @@ router.post('/init', async (c) => {
     sameSite: 'Lax',
     path: '/',
     maxAge: SESSION_MAX_AGE_SECONDS,
-    secure: config.cookieSecure,
+    secure: secureCookies(c),
   });
 
   return c.json({ ok: true });

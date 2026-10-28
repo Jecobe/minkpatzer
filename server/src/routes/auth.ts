@@ -1,3 +1,4 @@
+import type { Context } from 'hono';
 import { Hono } from 'hono';
 import { setCookie, getCookie, deleteCookie } from 'hono/cookie';
 import { z } from 'zod';
@@ -13,7 +14,7 @@ import {
   normalizeInviteCode,
   type InviteRow,
 } from '../auth/invites.js';
-import { publicBaseUrl } from '../publicUrl.js';
+import { publicBaseUrl, secureCookies } from '../publicUrl.js';
 import {
   isMailerConfigured,
   sendMail,
@@ -106,13 +107,13 @@ function clientIp(c: { req: { header: (k: string) => string | undefined } }): st
   return 'direct';
 }
 
-function sessionCookieOpts() {
+function sessionCookieOpts(c: Context) {
   return {
     httpOnly: true,
     sameSite: 'Lax' as const,
     path: '/',
     maxAge: SESSION_MAX_AGE_SECONDS,
-    secure: config.cookieSecure,
+    secure: secureCookies(c),
   };
 }
 
@@ -167,7 +168,7 @@ router.post('/login', async (c) => {
   if (existing) destroySession(existing);
 
   const cookie = createSession(row.id);
-  setCookie(c, SESSION_COOKIE_NAME, cookie, sessionCookieOpts());
+  setCookie(c, SESSION_COOKIE_NAME, cookie, sessionCookieOpts(c));
 
   console.log(`[auth] login_ok ip=${ip} user=${username} role=${row.role}`);
   const profile = db.prepare('SELECT * FROM profiles WHERE user_id = ?').get(row.id) as Profile;
@@ -243,7 +244,7 @@ router.get('/oidc/callback', async (c) => {
   // Same rotation as password login.
   const existing = getCookie(c, SESSION_COOKIE_NAME);
   if (existing) destroySession(existing);
-  setCookie(c, SESSION_COOKIE_NAME, createSession(result.userId, { oidcIdToken: login.idToken }), sessionCookieOpts());
+  setCookie(c, SESSION_COOKIE_NAME, createSession(result.userId, { oidcIdToken: login.idToken }), sessionCookieOpts(c));
   const notes = [result.roleChanged && 'role_changed', result.emailAdded && 'email_added'].filter(Boolean).join(' ');
   console.log(`[auth] sso_login_ok ip=${logSafe(ip)} user_id=${result.userId} sub=${logSafe(identity.subject)} account=${result.outcome} role=${result.role}${notes ? ` ${notes}` : ''}`);
   return c.redirect('/');
@@ -401,7 +402,7 @@ router.post('/register', async (c) => {
 
   // Otherwise log them straight in, same as a normal login.
   const cookie = createSession(userId);
-  setCookie(c, SESSION_COOKIE_NAME, cookie, sessionCookieOpts());
+  setCookie(c, SESSION_COOKIE_NAME, cookie, sessionCookieOpts(c));
   console.log(`[auth] register_ok ip=${ip} user=${username} email=${email ? 'yes' : 'no'} invite=${invite ? invite.id : 'none'}`);
   const profile = db.prepare('SELECT * FROM profiles WHERE user_id = ?').get(userId) as Profile;
   return c.json({ user: { id: userId, username, role: 'user' as Role, profile }, verification_required: false });

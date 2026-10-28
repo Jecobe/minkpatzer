@@ -55,12 +55,17 @@ app.use('*', async (c, next) => {
       "img-src 'self' data:",
       "font-src 'self' data:",
       "style-src 'self' 'unsafe-inline'",
-      "script-src 'self'",
+      // 'wasm-unsafe-eval' lets the in-browser Stockfish compile its WASM; it
+      // allows WebAssembly only, not eval().
+      "script-src 'self' 'wasm-unsafe-eval'",
+      // The downloaded engine runs as a Web Worker from a blob: URL, and
+      // fetches its .wasm from another blob: URL (web/src/lib/browserEngine.ts).
+      "worker-src 'self' blob:",
       // api.github.com is the star count behind the "Star on GitHub" link added
       // in 7.13.0. Without it the browser blocks the request and logs a CSP
       // violation on every page load; the link still works, the number never
       // appears. One read-only, unauthenticated GET.
-      "connect-src 'self' https://api.github.com",
+      "connect-src 'self' blob: https://api.github.com",
       // Custom TTS voices: generated speech and mic-recording previews are
       // played from blob: URLs.
       "media-src 'self' blob:",
@@ -137,6 +142,7 @@ const MIME: Record<string, string> = {
   '.woff2': 'font/woff2',
   '.ico': 'image/x-icon',
   '.wav': 'audio/wav',
+  '.wasm': 'application/wasm',
 };
 
 if (existsSync(WEB_DIST)) {
